@@ -13,6 +13,7 @@ Or import and use directly:
 """
 
 import json
+import argparse
 from src.data.espn_client import ESPNSoccerClient
 from datetime import datetime, timedelta
 from typing import List, Optional, Union
@@ -165,34 +166,91 @@ def explore_data(dates: Optional[List[str]] = None,
                                 trend = "🔥 Hot" if recent_avg >= 2.0 else "📈 Good" if recent_avg >= 1.5 else "📉 Poor"
                                 print(f"   Recent Trend: {trend} ({recent_avg:.1f} pts/game)")
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description='ESPN API Data Explorer - Flexible soccer data analysis tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python test_data_explorer.py                                    # Today's matches, all leagues
+  python test_data_explorer.py --dates 20240428                   # Specific date
+  python test_data_explorer.py --dates 20240428 20240421          # Multiple dates
+  python test_data_explorer.py --leagues eng.1                    # Premier League only
+  python test_data_explorer.py --leagues usa.1                    # MLS only
+  python test_data_explorer.py --teams Liverpool Arsenal          # Specific teams
+  python test_data_explorer.py --dates 20240428 --teams Liverpool # Liverpool on specific date
+  python test_data_explorer.py --minimal                          # Minimal output
+  python test_data_explorer.py --quick-lookup Liverpool 20240428  # Quick team lookup
+  python test_data_explorer.py --compare-leagues 20240428         # Compare leagues
+        """
+    )
+    
+    # Main exploration options
+    parser.add_argument('--dates', nargs='*', 
+                       help='Dates to explore (YYYYMMDD format). Leave empty for today.')
+    parser.add_argument('--leagues', nargs='*', choices=['eng.1', 'usa.1'],
+                       help='Leagues to explore (eng.1=Premier League, usa.1=MLS). Leave empty for both.')
+    parser.add_argument('--teams', nargs='*',
+                       help='Team names to filter by. Leave empty for all teams.')
+    
+    # Output control
+    parser.add_argument('--no-records', action='store_true',
+                       help='Hide detailed team records')
+    parser.add_argument('--no-form', action='store_true', 
+                       help='Hide form analysis')
+    parser.add_argument('--no-details', action='store_true',
+                       help='Hide match details (date, venue, etc.)')
+    parser.add_argument('--minimal', action='store_true',
+                       help='Minimal output (equivalent to --no-records --no-details)')
+    
+    # Alternative functions
+    parser.add_argument('--quick-lookup', nargs=2, metavar=('TEAM', 'DATE'),
+                       help='Quick lookup for specific team on specific date')
+    parser.add_argument('--compare-leagues', nargs='?', const='today', metavar='DATE',
+                       help='Compare leagues (optionally on specific date)')
+    
+    return parser.parse_args()
+
 def main():
-    """Main function with example configurations."""
+    """Main function with command line argument parsing."""
+    args = parse_args()
     
-    # ===== CONFIGURATION EXAMPLES =====
-    # Uncomment the scenario you want to test:
+    # Handle alternative functions first
+    if args.quick_lookup:
+        team_name, date = args.quick_lookup
+        quick_team_lookup(team_name, date)
+        return
     
-    # Example 1: Today's matches for all leagues and teams
-    explore_data()
+    if args.compare_leagues is not None:
+        date = None if args.compare_leagues == 'today' else args.compare_leagues
+        compare_leagues(date)
+        return
     
-    # Example 2: Specific historical date
-    # explore_data(dates=['20240428'])
+    # Handle main exploration
+    dates = args.dates
+    leagues = args.leagues
+    teams = args.teams
     
-    # Example 3: Multiple dates for Premier League only
-    # explore_data(dates=['20240428', '20240421'], leagues=['eng.1'])
+    # Handle minimal flag
+    if args.minimal:
+        show_detailed_records = False
+        show_match_details = False
+        show_form_analysis = True  # Keep form analysis even in minimal mode
+    else:
+        show_detailed_records = not args.no_records
+        show_form_analysis = not args.no_form
+        show_match_details = not args.no_details
     
-    # Example 4: Focus on specific teams
-    # explore_data(dates=['20240428'], teams=['Liverpool', 'Arsenal', 'Manchester City'])
-    
-    # Example 5: MLS data only
-    # explore_data(leagues=['usa.1'])
-    
-    # Example 6: Minimal output for quick checks
-    # explore_data(
-    #     dates=['20240428'], 
-    #     teams=['Liverpool'], 
-    #     show_detailed_records=False, 
-    #     show_form_analysis=True
-    # )
+    # Call main exploration function
+    explore_data(
+        dates=dates,
+        leagues=leagues,
+        teams=teams,
+        show_detailed_records=show_detailed_records,
+        show_form_analysis=show_form_analysis,
+        show_match_details=show_match_details
+    )
     
 
 def quick_team_lookup(team_name: str = "Liverpool", 
