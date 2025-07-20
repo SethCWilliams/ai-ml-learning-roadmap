@@ -287,7 +287,7 @@ def explore_data(dates: Optional[List[str]] = None,
                             print(f"   🔥 Form Points: {form_points}/{max_points} (last {len(form)} games)")
                             
                             # Form trend analysis
-                            recent_form = form[-3:] if len(form) >= 3 else form
+                            recent_form = form[-5:] if len(form) >= 5 else form
                             recent_points = sum(3 if c == 'W' else 1 if c == 'D' else 0 for c in recent_form)
                             if len(recent_form) > 0:
                                 recent_avg = recent_points / len(recent_form)
