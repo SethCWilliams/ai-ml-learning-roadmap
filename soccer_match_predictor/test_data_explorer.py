@@ -2,148 +2,253 @@
 ESPN API Data Explorer - Interactive Testing Tool
 
 Keep this file as a handy utility to explore ESPN API data at any time.
-Modify the dates, leagues, and parameters below to test different scenarios.
+Modify the parameters in the main() function or call explore_data() directly.
 
-Usage: python test_data_explorer.py
+Usage: 
+    python test_data_explorer.py
+    
+Or import and use directly:
+    from test_data_explorer import explore_data
+    explore_data(dates=['20240428'], leagues=['eng.1'], teams=['Liverpool'])
 """
 
 import json
 from src.data.espn_client import ESPNSoccerClient
 from datetime import datetime, timedelta
+from typing import List, Optional, Union
 
-def main():
-    """Main exploration function - modify as needed."""
+def explore_data(dates: Optional[List[str]] = None, 
+                leagues: Optional[List[str]] = None, 
+                teams: Optional[List[str]] = None,
+                show_detailed_records: bool = True,
+                show_form_analysis: bool = True,
+                show_match_details: bool = True):
+    """
+    Explore ESPN API data with flexible parameters.
+    
+    Args:
+        dates: List of dates in YYYYMMDD format, or None for today
+        leagues: List of league codes ('eng.1', 'usa.1'), or None for both
+        teams: List of team names to filter by, or None for all teams
+        show_detailed_records: Whether to show detailed team records
+        show_form_analysis: Whether to analyze team form
+        show_match_details: Whether to show match details
+    """
     client = ESPNSoccerClient()
     
-    # ===== CONFIGURATION SECTION =====
-    # Modify these parameters to test different scenarios
+    # Set defaults
+    if dates is None:
+        dates = [datetime.now().strftime("%Y%m%d")]
     
-    LEAGUE = 'eng.1'  # 'eng.1' for Premier League, 'usa.1' for MLS
+    if leagues is None:
+        leagues = ['eng.1', 'usa.1']
     
-    # Test specific dates (YYYYMMDD format)
-    DATES_TO_TEST = [
-        "20240428",  # Late April 2024 - good historical data
-        "20240421",  # Mid April 2024
-        "20240506",  # Early May 2024
-        None,        # Current date
-    ]
+    # Convert teams to lowercase for case-insensitive matching
+    teams_lower = [team.lower() for team in teams] if teams else None
     
-    # Teams to focus on (optional filtering)
-    TEAMS_OF_INTEREST = ['Liverpool', 'Arsenal', 'Manchester City', 'Chelsea']
+    league_names = {
+        'eng.1': 'Premier League',
+        'usa.1': 'MLS'
+    }
     
-    SHOW_DETAILED_RECORDS = True
-    SHOW_FORM_ANALYSIS = True
-    SHOW_MATCH_DETAILS = True
+    print("=" * 80)
+    print("ESPN API DATA EXPLORER")
+    print("=" * 80)
+    print(f"📅 Dates: {', '.join(dates) if dates != [datetime.now().strftime('%Y%m%d')] else 'TODAY'}")
+    print(f"🏟️  Leagues: {', '.join([league_names.get(l, l) for l in leagues])}")
+    print(f"👥 Teams: {', '.join(teams) if teams else 'ALL TEAMS'}")
+    print("=" * 80)
     
-    # ===== EXPLORATION SECTION =====
-    
-    print("=" * 70)
-    print(f"ESPN API DATA EXPLORER - {LEAGUE.upper()}")
-    print("=" * 70)
-    
-    for date in DATES_TO_TEST:
-        date_label = date if date else "CURRENT"
-        print(f"\n{'='*20} {date_label} {'='*20}")
+    for league in leagues:
+        league_name = league_names.get(league, league.upper())
         
-        scoreboard = client.get_scoreboard(LEAGUE, date)
+        print(f"\n🏆 {league_name}")
+        print("=" * 60)
         
-        if not scoreboard or not scoreboard.get('events'):
-            print(f"❌ No events found for {date_label}")
-            continue
+        for date in dates:
+            date_label = date if date != datetime.now().strftime("%Y%m%d") else "TODAY"
+            print(f"\n📅 {date_label}")
+            print("-" * 40)
             
-        events = scoreboard['events']
-        print(f"📅 Found {len(events)} events")
-        
-        for i, event in enumerate(events):
-            print(f"\n--- MATCH {i+1}: {event.get('name')} ---")
-            print(f"Date: {event.get('date')}")
-            print(f"Status: {event.get('status', {}).get('type', {}).get('name', 'Unknown')}")
+            # Handle "today" case
+            api_date = None if date == datetime.now().strftime("%Y%m%d") else date
             
-            if 'competitions' not in event:
+            scoreboard = client.get_scoreboard(league, api_date)
+            
+            if not scoreboard or not scoreboard.get('events'):
+                print(f"❌ No events found for {league_name} on {date_label}")
                 continue
                 
-            comp = event['competitions'][0]
-            competitors = comp.get('competitors', [])
+            events = scoreboard['events']
+            print(f"🎮 Found {len(events)} matches")
             
-            for competitor in competitors:
-                team = competitor['team']
-                team_name = team['displayName']
+            for i, event in enumerate(events):
+                match_name = event.get('name', 'Unknown Match')
+                print(f"\n--- MATCH {i+1}: {match_name} ---")
                 
-                # Skip if filtering by specific teams
-                if TEAMS_OF_INTEREST and team_name not in TEAMS_OF_INTEREST:
+                if show_match_details:
+                    print(f"Date: {event.get('date')}")
+                    print(f"Status: {event.get('status', {}).get('type', {}).get('name', 'Unknown')}")
+                    venue = event.get('venue', {}).get('fullName')
+                    if venue:
+                        print(f"Venue: {venue}")
+                
+                if 'competitions' not in event:
+                    continue
+                    
+                comp = event['competitions'][0]
+                competitors = comp.get('competitors', [])
+                
+                # Track teams found for filtering
+                teams_in_match = []
+                
+                for competitor in competitors:
+                    team = competitor['team']
+                    team_name = team['displayName']
+                    teams_in_match.append(team_name.lower())
+                
+                # Check if we should show this match based on team filter
+                if teams_lower and not any(team in teams_in_match for team in teams_lower):
+                    print(f"⏭️  Skipping (no teams of interest)")
                     continue
                 
-                print(f"\n🏟️  {team_name} ({competitor.get('homeAway', 'unknown').upper()})")
-                print(f"   Score: {competitor.get('score', 0)}")
-                
-                if SHOW_DETAILED_RECORDS:
-                    records = competitor.get('records', [])
-                    for record in records:
-                        summary = record.get('summary', 'N/A')
-                        if summary != '0-0-0':  # Only show meaningful records
-                            print(f"   Record: {summary} ({record.get('name', 'Unknown')})")
+                # Show team details
+                for competitor in competitors:
+                    team = competitor['team']
+                    team_name = team['displayName']
+                    
+                    # Skip if filtering by specific teams and this isn't one
+                    if teams_lower and team_name.lower() not in teams_lower:
+                        continue
+                    
+                    home_away = competitor.get('homeAway', 'unknown').upper()
+                    score = competitor.get('score', 0)
+                    
+                    print(f"\n🏟️  {team_name} ({home_away})")
+                    print(f"   Score: {score}")
+                    
+                    if show_detailed_records:
+                        records = competitor.get('records', [])
+                        for record in records:
+                            summary = record.get('summary', 'N/A')
+                            record_name = record.get('name', 'Unknown')
                             
-                            # Calculate additional stats
-                            if '-' in summary:
-                                parts = summary.split('-')
-                                if len(parts) == 3:
-                                    wins, draws, losses = map(int, parts)
-                                    total_games = wins + draws + losses
-                                    points = (wins * 3) + draws
-                                    win_rate = (wins / total_games * 100) if total_games > 0 else 0
-                                    print(f"   Points: {points} | Win Rate: {win_rate:.1f}% | Games: {total_games}")
-                
-                if SHOW_FORM_ANALYSIS:
-                    form = competitor.get('form', '')
-                    if form:
-                        print(f"   Form: {form}")
-                        # Calculate form points
-                        form_points = sum(3 if c == 'W' else 1 if c == 'D' else 0 for c in form)
-                        print(f"   Form Points: {form_points}/15 (last 5 games)")
-        
-        print(f"\n{'='*50}")
+                            if summary and summary != '0-0-0':  # Only show meaningful records
+                                print(f"   Record: {summary} ({record_name})")
+                                
+                                # Calculate additional stats
+                                if '-' in summary and summary.count('-') == 2:
+                                    try:
+                                        wins, draws, losses = map(int, summary.split('-'))
+                                        total_games = wins + draws + losses
+                                        if total_games > 0:
+                                            points = (wins * 3) + draws
+                                            win_rate = (wins / total_games * 100)
+                                            print(f"   📊 Points: {points} | Win Rate: {win_rate:.1f}% | Games: {total_games}")
+                                    except ValueError:
+                                        pass
+                    
+                    if show_form_analysis:
+                        form = competitor.get('form', '')
+                        if form:
+                            print(f"   Form: {form}")
+                            # Calculate form points (W=3, D=1, L=0)
+                            form_points = sum(3 if c == 'W' else 1 if c == 'D' else 0 for c in form)
+                            max_points = len(form) * 3
+                            print(f"   🔥 Form Points: {form_points}/{max_points} (last {len(form)} games)")
+                            
+                            # Form trend analysis
+                            recent_form = form[-3:] if len(form) >= 3 else form
+                            recent_points = sum(3 if c == 'W' else 1 if c == 'D' else 0 for c in recent_form)
+                            if len(recent_form) > 0:
+                                recent_avg = recent_points / len(recent_form)
+                                trend = "🔥 Hot" if recent_avg >= 2.0 else "📈 Good" if recent_avg >= 1.5 else "📉 Poor"
+                                print(f"   Recent Trend: {trend} ({recent_avg:.1f} pts/game)")
 
-def quick_team_lookup():
-    """Quick function to look up specific team data."""
+def main():
+    """Main function with example configurations."""
+    
+    # ===== CONFIGURATION EXAMPLES =====
+    # Uncomment the scenario you want to test:
+    
+    # Example 1: Today's matches for all leagues and teams
+    explore_data()
+    
+    # Example 2: Specific historical date
+    # explore_data(dates=['20240428'])
+    
+    # Example 3: Multiple dates for Premier League only
+    # explore_data(dates=['20240428', '20240421'], leagues=['eng.1'])
+    
+    # Example 4: Focus on specific teams
+    # explore_data(dates=['20240428'], teams=['Liverpool', 'Arsenal', 'Manchester City'])
+    
+    # Example 5: MLS data only
+    # explore_data(leagues=['usa.1'])
+    
+    # Example 6: Minimal output for quick checks
+    # explore_data(
+    #     dates=['20240428'], 
+    #     teams=['Liverpool'], 
+    #     show_detailed_records=False, 
+    #     show_form_analysis=True
+    # )
+    
+
+def quick_team_lookup(team_name: str = "Liverpool", 
+                     date: str = "20240428", 
+                     league: str = "eng.1"):
+    """
+    Quick function to look up specific team data.
+    
+    Args:
+        team_name: Name of team to search for
+        date: Date in YYYYMMDD format  
+        league: League code ('eng.1' or 'usa.1')
+    """
     client = ESPNSoccerClient()
     
-    # Modify these as needed
-    TEAM_NAME = "Liverpool"
-    DATE = "20240428"
+    print(f"\n🔍 QUICK LOOKUP: {team_name} on {date}")
+    print("-" * 50)
     
-    print(f"\n🔍 QUICK LOOKUP: {TEAM_NAME} on {DATE}")
-    print("-" * 40)
-    
-    scoreboard = client.get_scoreboard('eng.1', DATE)
+    scoreboard = client.get_scoreboard(league, date)
     if scoreboard and 'events' in scoreboard:
         for event in scoreboard['events']:
             if 'competitions' in event:
                 comp = event['competitions'][0]
                 for competitor in comp.get('competitors', []):
                     team = competitor['team']
-                    if TEAM_NAME.lower() in team['displayName'].lower():
-                        print(f"Found: {team['displayName']}")
+                    if team_name.lower() in team['displayName'].lower():
+                        print(f"✅ Found: {team['displayName']}")
                         print(f"Records: {competitor.get('records', [])}")
                         print(f"Form: {competitor.get('form', 'N/A')}")
                         print(f"Score: {competitor.get('score', 0)}")
+                        print(f"Home/Away: {competitor.get('homeAway', 'Unknown')}")
                         return
     
-    print(f"❌ {TEAM_NAME} not found on {DATE}")
+    print(f"❌ {team_name} not found on {date}")
 
-def compare_leagues():
-    """Compare data structure between Premier League and MLS."""
+def compare_leagues(date: Optional[str] = None):
+    """
+    Compare data structure between Premier League and MLS.
+    
+    Args:
+        date: Date in YYYYMMDD format, or None for current
+    """
     client = ESPNSoccerClient()
     
-    print("\n🆚 LEAGUE COMPARISON")
-    print("-" * 40)
+    print(f"\n🆚 LEAGUE COMPARISON")
+    if date:
+        print(f"📅 Date: {date}")
+    print("-" * 50)
     
     for league, name in [('eng.1', 'Premier League'), ('usa.1', 'MLS')]:
-        print(f"\n{name}:")
-        scoreboard = client.get_scoreboard(league)
+        print(f"\n🏟️  {name}:")
+        scoreboard = client.get_scoreboard(league, date)
         
         if scoreboard and 'events' in scoreboard:
             events = scoreboard['events']
-            print(f"  Events: {len(events)}")
+            print(f"  📊 Events: {len(events)}")
             
             if events:
                 # Sample first team
@@ -152,17 +257,20 @@ def compare_leagues():
                     team_data = comp['competitors'][0]
                     team = team_data['team']
                     
-                    print(f"  Sample team: {team['displayName']}")
-                    print(f"  Records: {team_data.get('records', [])}")
-                    print(f"  Form: {team_data.get('form', 'N/A')}")
+                    print(f"  👥 Sample team: {team['displayName']}")
+                    records = team_data.get('records', [])
+                    if records:
+                        print(f"  📈 Records: {records[0].get('summary', 'N/A')}")
+                    print(f"  🔥 Form: {team_data.get('form', 'N/A')}")
                 except (KeyError, IndexError):
-                    print("  Error parsing team data")
+                    print("  ❌ Error parsing team data")
         else:
-            print("  No events found")
+            print("  ❌ No events found")
 
 if __name__ == "__main__":
-    # Uncomment the function you want to run:
+    # Default: run main exploration
+    main()
     
-    main()                  # Full exploration
-    # quick_team_lookup()   # Quick team lookup
-    # compare_leagues()     # League comparison
+    # Uncomment for other functions:
+    # quick_team_lookup("Arsenal", "20240428")
+    # compare_leagues("20240428")
