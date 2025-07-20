@@ -29,7 +29,7 @@ ai_roadmap/
 └── habit_evolution_engine/        # Phase 5: Autonomous Systems
 ```
 
-## 🏈 Phase 1: Data Science & Prediction
+## ⚽ Phase 1: Data Science & Prediction
 
 ### [Soccer Match Predictor](./soccer_match_predictor/) 🚀 **Currently Active**
 **Goal:** Predict Premier League and MLS match outcomes  
