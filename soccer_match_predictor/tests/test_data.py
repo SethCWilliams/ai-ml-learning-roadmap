@@ -15,9 +15,9 @@ class TestDataCollection:
         # TODO: Implement when ESPN API client is created
         pass
     
-    def test_fbref_scraper(self):
-        """Test FBref scraping functionality"""
-        # TODO: Implement when scraper is created
+    def test_api_football_client(self):
+        """Test API-Football client functionality"""
+        # TODO: Implement when API-Football client is created
         pass
     
     def test_data_validation(self):

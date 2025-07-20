@@ -15,66 +15,17 @@ Or import and use directly:
 import json
 import argparse
 from src.data.espn_client import ESPNSoccerClient
-from src.data.fbref_scraper import FBrefScraper
-from datetime import datetime, timedelta
-from typing import List, Optional, Union, Dict
-import pandas as pd
-
-def get_team_fbref_data(team_name: str, fbref_data: Dict, league: str) -> Dict:
-    """
-    Extract FBref data for a specific team.
-    
-    Args:
-        team_name: Name of the team
-        fbref_data: Cached FBref data
-        league: League code
-        
-    Returns:
-        Dictionary with team's FBref statistics
-    """
-    team_data = {}
-    
-    if not fbref_data.get(league):
-        return team_data
-    
-    # Get data from league table
-    if fbref_data[league]['table'] is not None:
-        table = fbref_data[league]['table']
-        team_row = table[table['team_name'].str.contains(team_name, case=False, na=False)]
-        if not team_row.empty:
-            row = team_row.iloc[0]
-            team_data.update({
-                'xG': row.get('xG', 0),
-                'xGA': row.get('xGA', 0),
-                'xGD': row.get('xGD', 0),
-                'goals_per_game': row.get('goals_per_game', 0),
-                'goals_against_per_game': row.get('goals_against_per_game', 0)
-            })
-    
-    # Get home/away data
-    if fbref_data[league]['home_away'] is not None:
-        home_away = fbref_data[league]['home_away']
-        team_row = home_away[home_away['team_name'].str.contains(team_name, case=False, na=False)]
-        if not team_row.empty:
-            row = team_row.iloc[0]
-            team_data.update({
-                'home_win_rate': row.get('home_win_rate', 0),
-                'away_win_rate': row.get('away_win_rate', 0),
-                'home_advantage_goals': row.get('home_advantage_goals', 0),
-                'home_advantage_defense': row.get('home_advantage_defense', 0)
-            })
-    
-    return team_data
+from datetime import datetime
+from typing import List, Optional
 
 def explore_data(dates: Optional[List[str]] = None, 
                 leagues: Optional[List[str]] = None, 
                 teams: Optional[List[str]] = None,
                 show_detailed_records: bool = True,
                 show_form_analysis: bool = True,
-                show_match_details: bool = True,
-                include_fbref_data: bool = True):
+                show_match_details: bool = True):
     """
-    Explore ESPN API data with FBref advanced statistics integration.
+    Explore ESPN API data.
     
     Args:
         dates: List of dates in YYYYMMDD format, or None for today
@@ -83,36 +34,8 @@ def explore_data(dates: Optional[List[str]] = None,
         show_detailed_records: Whether to show detailed team records
         show_form_analysis: Whether to analyze team form
         show_match_details: Whether to show match details
-        include_fbref_data: Whether to include FBref advanced statistics
     """
     client = ESPNSoccerClient()
-    
-    # Initialize FBref data cache
-    fbref_data = {}
-    if include_fbref_data:
-        fbref_scraper = FBrefScraper()
-        print("🔄 Loading FBref advanced statistics...")
-        
-        # Pre-load FBref data for leagues we'll analyze
-        for league in (leagues or ['eng.1', 'usa.1']):
-            league_key = 'premier_league' if league == 'eng.1' else 'mls'
-            try:
-                # Get league table with xG data
-                league_table = fbref_scraper.get_league_table(league_key)
-                # Get home/away splits
-                home_away = fbref_scraper.get_home_away_splits(league_key)
-                # Get advanced stats
-                advanced_stats = fbref_scraper.get_advanced_stats(league_key)
-                
-                fbref_data[league] = {
-                    'table': league_table,
-                    'home_away': home_away,
-                    'advanced': advanced_stats
-                }
-                print(f"✅ Loaded {league_key} data from FBref")
-            except Exception as e:
-                print(f"⚠️  Failed to load {league_key} FBref data: {e}")
-                fbref_data[league] = None
     
     # Set defaults
     if dates is None:
@@ -135,8 +58,6 @@ def explore_data(dates: Optional[List[str]] = None,
     print(f"📅 Dates: {', '.join(dates) if dates != [datetime.now().strftime('%Y%m%d')] else 'TODAY'}")
     print(f"🏟️  Leagues: {', '.join([league_names.get(l, l) for l in leagues])}")
     print(f"👥 Teams: {', '.join(teams) if teams else 'ALL TEAMS'}")
-    if include_fbref_data:
-        print("📊 FBref Integration: ENABLED")
     print("=" * 80)
     
     for league in leagues:
@@ -206,55 +127,6 @@ def explore_data(dates: Optional[List[str]] = None,
                     
                     print(f"\n🏟️  {team_name} ({home_away})")
                     print(f"   Score: {score}")
-                    
-                    # Add FBref advanced statistics
-                    if include_fbref_data and fbref_data:
-                        team_fbref = get_team_fbref_data(team_name, fbref_data, league)
-                        if team_fbref:
-                            print(f"   📊 FBref Analysis:")
-                            
-                            # Expected Goals analysis
-                            if 'xG' in team_fbref and 'xGA' in team_fbref:
-                                try:
-                                    xg = float(team_fbref['xG'])
-                                    xga = float(team_fbref['xGA']) 
-                                    xgd = team_fbref.get('xGD', xg - xga)
-                                    if isinstance(xgd, str):
-                                        xgd = float(xgd)
-                                    print(f"      Expected Goals: {xg:.1f} xG | {xga:.1f} xGA | {xgd:+.1f} xGD")
-                                    
-                                    # Quality analysis
-                                    if xgd > 10:
-                                        quality = "🔥 Elite"
-                                    elif xgd > 5:
-                                        quality = "💪 Strong" 
-                                    elif xgd > 0:
-                                        quality = "👍 Solid"
-                                    elif xgd > -5:
-                                        quality = "⚠️ Struggling"
-                                    else:
-                                        quality = "🚨 Poor"
-                                    print(f"      Team Quality: {quality}")
-                                except (ValueError, TypeError):
-                                    print(f"      Expected Goals: {team_fbref['xG']} xG | {team_fbref['xGA']} xGA")
-                            
-                            # Home/Away advantage
-                            if home_away == 'HOME' and 'home_win_rate' in team_fbref:
-                                home_wr = team_fbref['home_win_rate']
-                                away_wr = team_fbref.get('away_win_rate', 0)
-                                advantage = team_fbref.get('home_advantage_goals', 0)
-                                print(f"      Home Performance: {home_wr:.2f} win rate (vs {away_wr:.2f} away)")
-                                if advantage > 0.3:
-                                    print(f"      🏠 Strong home advantage (+{advantage:.2f} goals/game)")
-                                elif advantage > 0.1:
-                                    print(f"      🏠 Moderate home advantage (+{advantage:.2f} goals/game)")
-                            
-                            elif home_away == 'AWAY' and 'away_win_rate' in team_fbref:
-                                away_wr = team_fbref['away_win_rate']
-                                home_wr = team_fbref.get('home_win_rate', 0)
-                                print(f"      Away Performance: {away_wr:.2f} win rate (vs {home_wr:.2f} home)")
-                                if away_wr > home_wr:
-                                    print(f"      ✈️ Surprisingly good away form")
                     
                     if show_detailed_records:
                         records = competitor.get('records', [])
@@ -331,8 +203,6 @@ Examples:
                        help='Hide match details (date, venue, etc.)')
     parser.add_argument('--minimal', action='store_true',
                        help='Minimal output (equivalent to --no-records --no-details)')
-    parser.add_argument('--no-fbref', action='store_true',
-                       help='Skip FBref advanced statistics (faster but less detailed)')
     
     # Alternative functions
     parser.add_argument('--quick-lookup', nargs=2, metavar=('TEAM', 'DATE'),
@@ -379,8 +249,7 @@ def main():
         teams=teams,
         show_detailed_records=show_detailed_records,
         show_form_analysis=show_form_analysis,
-        show_match_details=show_match_details,
-        include_fbref_data=not args.no_fbref
+        show_match_details=show_match_details
     )
     
 
