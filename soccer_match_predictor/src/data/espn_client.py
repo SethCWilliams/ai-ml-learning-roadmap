@@ -1,9 +1,11 @@
-"""ESPN API client for soccer data collection."""
+"""ESPN API client for soccer data collection with database caching."""
 
 import time
 import requests
 from typing import Dict, List, Optional, Any
 import logging
+
+from .database import get_database_client, DatabaseClient
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +16,29 @@ class ESPNSoccerClient:
     BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer"
     RATE_LIMIT_DELAY = 1.0  # seconds between requests
     
-    def __init__(self):
+    def __init__(self, use_cache: bool = True):
+        """
+        Initialize ESPN client with optional database caching.
+        
+        Args:
+            use_cache: Whether to use database caching for API responses
+        """
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
         })
         self._last_request_time = 0
+        self.use_cache = use_cache
+        self.db_client: Optional[DatabaseClient] = None
+        
+        if self.use_cache:
+            try:
+                self.db_client = get_database_client()
+                logger.info("ESPN client initialized with database caching")
+            except Exception as e:
+                logger.warning(f"Failed to initialize database client: {e}")
+                logger.warning("Falling back to no caching")
+                self.use_cache = False
     
     def _rate_limit(self):
         """Ensure we don't exceed rate limits."""
@@ -28,14 +47,34 @@ class ESPNSoccerClient:
             time.sleep(self.RATE_LIMIT_DELAY - elapsed)
         self._last_request_time = time.time()
     
-    def _make_request(self, url: str, params: Optional[Dict] = None) -> Dict[str, Any]:
-        """Make rate-limited request to ESPN API."""
+    def _make_request(
+        self, 
+        url: str, 
+        params: Optional[Dict] = None, 
+        cache_hours: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Make rate-limited request to ESPN API with caching support."""
+        
+        # Check cache first if enabled
+        if self.use_cache and self.db_client:
+            cached_response = self.db_client.get_cached_response(url, params)
+            if cached_response:
+                return cached_response
+        
+        # Make actual API request
         self._rate_limit()
         
         try:
             response = self.session.get(url, params=params, timeout=10)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            
+            # Cache the response if caching is enabled
+            if self.use_cache and self.db_client and data:
+                self.db_client.cache_response(url, data, cache_hours, params)
+            
+            return data
+            
         except requests.RequestException as e:
             logger.error(f"ESPN API request failed: {e}")
             raise
@@ -56,7 +95,8 @@ class ESPNSoccerClient:
         params = {"dates": date}
         
         logger.info(f"Getting fixtures for {date} in league {league}")
-        data = self._make_request(url, params)
+        # Cache fixtures for 1 hour since live match data changes frequently
+        data = self._make_request(url, params, cache_hours=1)
         
         fixtures = []
         events = data.get("events", [])
@@ -123,7 +163,8 @@ class ESPNSoccerClient:
         url = f"{self.BASE_URL}/{league}/teams/{team_id}"
         
         logger.info(f"Getting season stats for team {team_id}")
-        data = self._make_request(url)
+        # Cache season stats for 24 hours since they change slowly
+        data = self._make_request(url, cache_hours=24)
         
         team_data = data.get("team", {})
         record = team_data.get("record", {}).get("items", [{}])[0] if team_data.get("record", {}).get("items") else {}
@@ -156,7 +197,8 @@ class ESPNSoccerClient:
         try:
             # Get team's full season schedule (much more efficient than date searching)
             url = f"{self.BASE_URL}/{league}/teams/{team_id}/schedule"
-            schedule_data = self._make_request(url)
+            # Cache team schedules for 6 hours since they update periodically
+            schedule_data = self._make_request(url, cache_hours=6)
             
             events = schedule_data.get('events', [])
             recent_matches = []
